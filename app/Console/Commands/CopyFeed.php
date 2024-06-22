@@ -16,40 +16,63 @@ class CopyFeed extends Command
         $only = $this->option('only');
         $includePosts = $this->option('include-posts');
 
-        // Use source connection
-        $feed = DB::connection('source')->table('feeds')->find($id);
+        $feed = $this->getFeedFromSource($id);
         if (!$feed) {
             $this->error('Feed not found.');
             return;
         }
 
-        // Use destination connection
-        $newFeedId = DB::connection('destination')->table('feeds')->insertGetId([
-            'name' => $feed->name
-        ]);
+        $newFeedId = $this->copyFeedToDestination($feed);
 
-        // Copy related source entries
-        if ($only) {
-            if ($only == 'instagram') {
-                $this->copyInstagramSources($feed->id, $newFeedId);
-            } elseif ($only == 'tiktok') {
-                $this->copyTiktokSources($feed->id, $newFeedId);
-            } else {
-                $this->error('Invalid source type.');
-                return;
-            }
-        } else {
-            // Copy all related source entries
-            $this->copyInstagramSources($feed->id, $newFeedId);
-            $this->copyTiktokSources($feed->id, $newFeedId);
-        }
+        $this->copyRelatedSources($feed->id, $newFeedId, $only);
 
-        // Copy related posts if --include-posts option is provided
         if ($includePosts) {
             $this->copyPosts($feed->id, $newFeedId, $includePosts);
         }
 
         $this->info('Feed copied successfully.');
+    }
+
+    protected function getFeedFromSource($id)
+    {
+        return DB::connection('source')->table('feeds')->find($id);
+    }
+
+    protected function copyFeedToDestination($feed)
+    {
+        return DB::connection('destination')->table('feeds')->insertGetId([
+            'name' => $feed->name
+        ]);
+    }
+
+    protected function copyRelatedSources($oldFeedId, $newFeedId, $only)
+    {
+        if ($only) {
+            $this->copySpecificSources($oldFeedId, $newFeedId, $only);
+        } else {
+            $this->copyAllSources($oldFeedId, $newFeedId);
+        }
+    }
+
+    protected function copySpecificSources($oldFeedId, $newFeedId, $only)
+    {
+        switch ($only) {
+            case 'instagram':
+                $this->copyInstagramSources($oldFeedId, $newFeedId);
+                break;
+            case 'tiktok':
+                $this->copyTiktokSources($oldFeedId, $newFeedId);
+                break;
+            default:
+                $this->error('Invalid source type.');
+                break;
+        }
+    }
+
+    protected function copyAllSources($oldFeedId, $newFeedId)
+    {
+        $this->copyInstagramSources($oldFeedId, $newFeedId);
+        $this->copyTiktokSources($oldFeedId, $newFeedId);
     }
 
     protected function copyInstagramSources($oldFeedId, $newFeedId)
